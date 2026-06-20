@@ -144,7 +144,8 @@ def resample_train(X_tr, y_tr, seed, cap=CAP_MAJORITY, min_count=MIN_MINORITY):
     counts_u = pd.Series(y_u).value_counts()
     smote_strategy = {cls: min_count for cls, cnt in counts_u.items() if cnt < min_count}
     if smote_strategy:
-        bsmote = BorderlineSMOTE(sampling_strategy=smote_strategy, random_state=seed, n_jobs=N_JOBS)
+        # NOTE: BorderlineSMOTE no longer accepts n_jobs in imbalanced-learn >= 0.13
+        bsmote = BorderlineSMOTE(sampling_strategy=smote_strategy, random_state=seed)
         X_r, y_r = bsmote.fit_resample(X_u, y_u)
     else:
         X_r, y_r = X_u, y_u
