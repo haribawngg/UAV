@@ -1,24 +1,42 @@
 """
 Shared utilities for Feature Selection (02_*) and Feature Engineering (03_*) notebooks.
 
-Usage in a notebook cell:
-    import sys; sys.path.insert(0, '/home/hanh/UAV_/notebook')
+Usage in a notebook cell (see any 02_*/03_* notebook's first cell for the
+full Colab-aware bootstrap that precedes this):
+    sys.path.insert(0, CODE_DIR + '/notebook')   # ensure notebook/ dir is importable
     from common import *
 
 Design goals
 ------------
-1. Absolute paths -> works regardless of Jupyter's current working directory.
-2. Incremental, resumable experiment runner -> a crash loses at most one
-   (K, seed, classifier) combination, not the whole notebook's progress.
+1. Absolute paths -> works regardless of Jupyter's current working directory,
+   and resolves to Google Drive automatically when running on Colab.
+2. Incremental, resumable experiment runner -> a crash (or Colab disconnect)
+   loses at most one (K, seed, classifier) combination, not the whole
+   notebook's progress.
 3. One shared implementation of resampling / metrics / model factory so every
    FS and FE notebook behaves identically (fair comparison).
 """
 import warnings
 warnings.filterwarnings('ignore')
 
-import os, time, json, pickle
+import os, sys, subprocess, time, json, pickle
 import numpy as np
 import pandas as pd
+
+# ── Colab environment setup (no-op when run locally) ───────────────────────────
+try:
+    import google.colab  # noqa: F401
+    IN_COLAB = True
+except ImportError:
+    IN_COLAB = False
+
+if IN_COLAB:
+    from google.colab import drive
+    drive.mount('/content/drive', force_remount=False)
+    # Colab doesn't ship these two by default; everything else used below
+    # (xgboost, lightgbm, sklearn, scipy) is preinstalled.
+    subprocess.run([sys.executable, '-m', 'pip', 'install', '-q',
+                     'imbalanced-learn', 'shap'], check=True)
 
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
@@ -36,7 +54,11 @@ from imblearn.under_sampling import RandomUnderSampler
 from imblearn.over_sampling import BorderlineSMOTE
 
 # ── Absolute paths (robust regardless of Jupyter's working directory) ──────────
-BASE_DIR      = '/home/hanh/UAV_/'
+# Colab: data/processed/models/results live on Drive so they persist across
+# sessions/disconnects. Local: defaults to this project's checkout path,
+# overridable with the UAV_BASE_DIR env var.
+BASE_DIR = ('/content/drive/MyDrive/UAV_data/' if IN_COLAB
+            else os.environ.get('UAV_BASE_DIR', '/home/hanh/UAV_/'))
 PROCESSED_DIR = os.path.join(BASE_DIR, 'processed/')
 RESULTS_DIR   = os.path.join(BASE_DIR, 'results/')
 MODELS_DIR    = os.path.join(BASE_DIR, 'models/')
