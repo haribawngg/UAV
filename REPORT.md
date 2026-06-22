@@ -35,7 +35,7 @@ Phase 3  Feature Reduction
             ├─ FS: Correlation, Chi-Square, XGB Importance,
             │      SHAP, RFE, Consensus               ────────  [02_feature_selection/*]
             └─ FE: PCA, LDA, KernelPCA, AutoEncoder,
-                   Statistical Features                ────────  [03_geature_extraction/*]
+                   Statistical Features                ────────  [03_feature_extraction/*]
 Phase 4  Classification (DT/RF/XGB/LGBM/KNN/MLP, hyperparameter cố định từ Phase 2)
 Phase 5  Lặp lại 5 seeds (42, 52, 62, 72, 82)
 Phase 6  Đánh giá: Accuracy, Precision, Recall, F1, PR-AUC, FPR/FNR, Training/Inference time
@@ -58,8 +58,8 @@ viết lại nhiều lần.
 | 3a. FS rankings | [02_00_fs_rankings.ipynb](notebook/02_feature_selection/02_00_fs_rankings.ipynb) | ⛔ Code hoàn chỉnh, chưa chạy | `models/fs_rankings.pkl` chưa tồn tại |
 | 3a. FS × 6 phương pháp | [02_01](notebook/02_feature_selection/02_01_fs_correlation.ipynb) … [02_06](notebook/02_feature_selection/02_06_fs_consensus.ipynb) | ⛔ Code hoàn chỉnh, chưa chạy | không có `results/fs_*_raw.csv` |
 | 3a. FS merge | [02_99_fs_merge_results.ipynb](notebook/02_feature_selection/02_99_fs_merge_results.ipynb) | ⛔ Chưa chạy được (phụ thuộc 02_01-06) | — |
-| 3b. FE × 5 phương pháp | [03_01](notebook/03_geature_extraction/03_01_fe_pca.ipynb) … [03_05](notebook/03_geature_extraction/03_05_fe_statfeatures.ipynb) | ⛔ Code hoàn chỉnh, chưa chạy | không có `results/fe_*_raw.csv` |
-| 3b. FE merge + FS-vs-FE | [03_99_fe_merge_results.ipynb](notebook/03_geature_extraction/03_99_fe_merge_results.ipynb) | ⛔ Chưa chạy được | — |
+| 3b. FE × 5 phương pháp | [03_01](notebook/03_feature_extraction/03_01_fe_pca.ipynb) … [03_05](notebook/03_feature_extraction/03_05_fe_statfeatures.ipynb) | ⛔ Code hoàn chỉnh, chưa chạy | không có `results/fe_*_raw.csv` |
+| 3b. FE merge + FS-vs-FE | [03_99_fe_merge_results.ipynb](notebook/03_feature_extraction/03_99_fe_merge_results.ipynb) | ⛔ Chưa chạy được | — |
 
 **Kết luận về trạng thái**: Toàn bộ **kiến trúc pipeline đã được thiết kế và code đầy đủ** (16
 notebook + 1 module chung), nhưng tính đến hiện tại **chỉ có Phase 1 (tiền xử lý) đã thực sự
@@ -215,13 +215,13 @@ classifier), và kiểm định Wilcoxon so với baseline.
 
 | Notebook | Phương pháp | Loại (theo đề cương §9) | Ghi chú kỹ thuật |
 |---|---|---|---|
-| [03_01](notebook/03_geature_extraction/03_01_fe_pca.ipynb) | PCA | Unsupervised Linear | fit chỉ trên train, in ra explained-variance-ratio mỗi K |
-| [03_02](notebook/03_geature_extraction/03_02_fe_lda.ipynb) | LDA | **Supervised** Linear | `fit_transform(X_train, y_train)` — dùng nhãn đúng cách. **Giới hạn cứng**: tối đa `n_classes - 1 = 9` thành phần. K=16 sẽ bị clip về 9 và zero-pad cho khớp shape (cột `actual_K` trong kết quả ghi rõ giá trị thật) |
-| [03_03](notebook/03_geature_extraction/03_03_fe_kernelpca.ipynb) | Kernel PCA (RBF) | Nonlinear Manifold | Đây là phương pháp tốn bộ nhớ nhất — kernel matrix có shape `(n_samples, n_fit_samples)` sẽ nổ RAM với 3.4M dòng. **Fix**: fit trên subsample ngẫu nhiên 2,000 mẫu, transform theo batch 50,000 dòng |
-| [03_04](notebook/03_geature_extraction/03_04_fe_autoencoder.ipynb) | AutoEncoder (shallow) | Deep Nonlinear | `MLPRegressor` D→K(ReLU)→D, học reconstruct input (unsupervised). Fit trên stratified subsample 200,000 mẫu (train MLPRegressor trên full 3.4M quá chậm với solver của sklearn); sau khi fit, encode (`ReLU(X·W+b)`) áp dụng cho **toàn bộ** train/val/test |
-| [03_05](notebook/03_geature_extraction/03_05_fe_statfeatures.ipynb) | Statistical Features | Domain-Knowledge | Sinh 10 thống kê (mean/std/min/max/range/median/skew/kurtosis/p25/p75) trên 20 raw feature gốc cho mỗi dòng, chọn top-K theo variance trên train. **Chỉ có 10 thống kê khả dụng** → K=16 bị clip về 10 và zero-pad, giống cơ chế của LDA |
+| [03_01](notebook/03_feature_extraction/03_01_fe_pca.ipynb) | PCA | Unsupervised Linear | fit chỉ trên train, in ra explained-variance-ratio mỗi K |
+| [03_02](notebook/03_feature_extraction/03_02_fe_lda.ipynb) | LDA | **Supervised** Linear | `fit_transform(X_train, y_train)` — dùng nhãn đúng cách. **Giới hạn cứng**: tối đa `n_classes - 1 = 9` thành phần. K=16 sẽ bị clip về 9 và zero-pad cho khớp shape (cột `actual_K` trong kết quả ghi rõ giá trị thật) |
+| [03_03](notebook/03_feature_extraction/03_03_fe_kernelpca.ipynb) | Kernel PCA (RBF) | Nonlinear Manifold | Đây là phương pháp tốn bộ nhớ nhất — kernel matrix có shape `(n_samples, n_fit_samples)` sẽ nổ RAM với 3.4M dòng. **Fix**: fit trên subsample ngẫu nhiên 2,000 mẫu, transform theo batch 50,000 dòng |
+| [03_04](notebook/03_feature_extraction/03_04_fe_autoencoder.ipynb) | AutoEncoder (shallow) | Deep Nonlinear | `MLPRegressor` D→K(ReLU)→D, học reconstruct input (unsupervised). Fit trên stratified subsample 200,000 mẫu (train MLPRegressor trên full 3.4M quá chậm với solver của sklearn); sau khi fit, encode (`ReLU(X·W+b)`) áp dụng cho **toàn bộ** train/val/test |
+| [03_05](notebook/03_feature_extraction/03_05_fe_statfeatures.ipynb) | Statistical Features | Domain-Knowledge | Sinh 10 thống kê (mean/std/min/max/range/median/skew/kurtosis/p25/p75) trên 20 raw feature gốc cho mỗi dòng, chọn top-K theo variance trên train. **Chỉ có 10 thống kê khả dụng** → K=16 bị clip về 10 và zero-pad, giống cơ chế của LDA |
 
-Notebook [03_99](notebook/03_geature_extraction/03_99_fe_merge_results.ipynb) gộp 5 file kết
+Notebook [03_99](notebook/03_feature_extraction/03_99_fe_merge_results.ipynb) gộp 5 file kết
 quả, sinh thêm **biểu đồ so sánh FS-tốt-nhất vs FE-tốt-nhất theo từng classifier và K**
 (`fs_vs_fe_comparison.png`) — phụ thuộc cả `02_99` đã chạy trước.
 

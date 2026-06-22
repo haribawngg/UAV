@@ -19,9 +19,10 @@ Design goals
 import warnings
 warnings.filterwarnings('ignore')
 
-import os, sys, subprocess, time, json, pickle
+import os, sys, subprocess, time, json, pickle, contextlib
 import numpy as np
 import pandas as pd
+import threadpoolctl
 
 # ── Colab environment setup (no-op when run locally) ───────────────────────────
 try:
@@ -58,7 +59,7 @@ from imblearn.over_sampling import BorderlineSMOTE
 # sessions/disconnects. Local: defaults to this project's checkout path,
 # overridable with the UAV_BASE_DIR env var.
 BASE_DIR = ('/content/drive/MyDrive/UAV_data/' if IN_COLAB
-            else os.environ.get('UAV_BASE_DIR', '/home/hanh/UAV_/'))
+            else os.environ.get('UAV_BASE_DIR', 'D:/UAV_/'))
 PROCESSED_DIR = os.path.join(BASE_DIR, 'processed/')
 RESULTS_DIR   = os.path.join(BASE_DIR, 'results/')
 MODELS_DIR    = os.path.join(BASE_DIR, 'models/')
@@ -75,6 +76,8 @@ N_JOBS               = -1
 RANKING_SAMPLE_SIZE  = 100_000  # stratified subsample size used ONLY to compute
                                  # expensive FS rankings (SHAP, RFE); does NOT
                                  # affect the actual classifier training data
+
+print(f'CPU: {os.cpu_count()} logical cores detected -> N_JOBS={N_JOBS} (RF/XGB/LGBM/KNN use all cores)')
 
 METRICS = ['accuracy', 'precision', 'recall', 'f1', 'pr_auc', 'fpr', 'fnr',
            'train_time_s', 'inference_ms']
@@ -174,11 +177,32 @@ def compute_metrics(y_true, y_pred, n_classes, y_prob=None):
 
 
 def timed_predict(model, X):
-    _ = model.predict(X[:10])  # warm-up (excluded from timing)
-    t0 = time.perf_counter()
-    y_pred = model.predict(X)
-    inf_ms = (time.perf_counter() - t0) / len(X) * 1000
-    y_prob = model.predict_proba(X) if hasattr(model, 'predict_proba') else None
+    # KNN parallelizes query chunks via joblib (n_jobs) AND each chunk's distance
+    # computation calls BLAS, which also multithreads by default -> nested
+    # parallelism can oversubscribe this CPU's 16 logical cores (16x16 threads
+    # fighting for 16 cores). Capping BLAS to 1 thread here keeps joblib's
+    # n_jobs=-1 chunking at full speed without the inner contention. Other
+    # models (RF/XGB/LGBM/MLP/DT) don't stack joblib + BLAS this way, so they're
+    # left at full multithreaded BLAS.
+    is_knn = type(model).__name__ == 'KNeighborsClassifier'
+    limiter = (threadpoolctl.threadpool_limits(limits=1, user_api='blas')
+               if is_knn else contextlib.nullcontext())
+    has_proba = hasattr(model, 'predict_proba')
+    with limiter:
+        _ = model.predict(X[:10])  # warm-up (excluded from timing)
+        t0 = time.perf_counter()
+        if has_proba:
+            # predict() and predict_proba() both require the same underlying
+            # work (e.g. KNN's nearest-neighbor search); deriving y_pred from
+            # argmax(y_prob) instead of calling both avoids doing that work
+            # twice (KNN was paying for two full neighbor searches over the
+            # test set per run -- verified argmax(y_prob) == predict() exactly).
+            y_prob = model.predict_proba(X)
+            y_pred = model.classes_[np.argmax(y_prob, axis=1)]
+        else:
+            y_pred = model.predict(X)
+            y_prob = None
+        inf_ms = (time.perf_counter() - t0) / len(X) * 1000
     return y_pred, y_prob, inf_ms
 
 
